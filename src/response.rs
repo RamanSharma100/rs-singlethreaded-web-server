@@ -69,6 +69,9 @@ impl fmt::Display for HTTPResponseStatus {
 pub struct Response {
     pub status: String,
     pub body: String,
+    pub headers: Vec<String>,
+    pub stream: std::net::TcpStream,
+
 }
 
 impl fmt::Display for Response {
@@ -78,17 +81,19 @@ impl fmt::Display for Response {
 }
 
 impl Response {
-    pub fn new(status: &str, body: &str) -> Response {
+    pub fn new(stream: &mut std::net::TcpStream) -> Response {
         Response {
-            status: status.to_string(),
-            body: body.to_string(),
+            headers: Vec::new(),
+            body: String::new(),
+            status: "200 OK".to_string(),
+            stream: stream.try_clone().unwrap(),
         }
     }
 
-    pub fn send(&self, stream: &mut std::net::TcpStream) {
-        let response = format!("HTTP/1.1 {}\r\n\r\n", self.status);
-        stream.write(response.as_bytes()).unwrap();
-        stream.flush().unwrap();
+    pub fn send(&mut self) {
+       let response = format!("HTTP/1.1 {}\r\n{}\r\n\r\n{}", self.status, self.headers.join("\r\n"), self.body);
+        self.stream.write(response.as_bytes()).unwrap();
+        self.stream.flush().unwrap();
     }
 
     pub fn get_status_line(
@@ -127,6 +132,28 @@ impl Response {
 
        }
     }
+
+    #[allow(dead_code)]
+    pub fn set_status(&mut self, status: HTTPResponseStatus)  -> &mut Self {
+        self.status = Response::get_status_line(status);
+        return self;
+    }
+
+    #[allow(dead_code)]
+    pub fn set_body(&mut self, body: String)  -> &mut Self {
+        self.body = body;
+        return self;
+    }
+
+    #[allow(dead_code)]
+    pub fn add_header(&mut self, header: String)  -> &mut Self {
+        self.headers.push(header);
+        return self;
+    }
+
+
+
+    
 
 }
 

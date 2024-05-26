@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Eq, Hash, PartialEq)]
 pub enum HTTPRequestMethod {
     GET,
@@ -31,6 +33,7 @@ pub enum Method {
 pub struct Request {
     pub method: Method,
     pub path: String,
+    pub params: HashMap<String, String>,
     pub query_string: String,
     pub body: String,
     pub headers: Vec<String>,
@@ -42,6 +45,7 @@ impl Request {
         let mut headers = Vec::new();
         let mut body = String::new();
         let mut method = Method::OTHER;
+        let _params: HashMap<String,String> = HashMap::new();
         let mut path = String::new();
         let mut query_string = String::new();
         let mut is_body = false;
@@ -69,15 +73,18 @@ impl Request {
                 if line == "" {
                     is_body = true;
                 } else if is_body {
-                    body = line.to_string();
+                    body.push_str(line);
+                    body.push_str("\n");
                 } else {
                     headers.push(line.to_string());
                 }
             }
         }
+
         Request {
             method,
             path,
+            params: _params,
             query_string,
             body,
             headers,
@@ -97,6 +104,11 @@ impl Request {
             Method::TRACE => HTTPRequestMethod::TRACE,
             Method::OTHER => HTTPRequestMethod::UNKNOWN,
         }
+    }
+
+    pub fn with_params(mut self, params: HashMap<String, String>) -> Self {
+        self.params = params;
+        self
     }
 
 }
