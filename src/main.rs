@@ -51,6 +51,16 @@ fn setup_routes() -> Routes {
         response.send();
     });
 
+    routes.get("/user-agent", |request,response| {
+        let user_agent = request.read_header("User-Agent").unwrap();
+
+        response.status = HTTPResponseStatus::OK.to_string();
+        response.body = format!("{}", user_agent);
+        response.headers.push("Content-Type: text/plain".to_string());
+        response.headers.push("Content-Length: ".to_owned()+ &user_agent.len().to_string());
+        response.send();
+    }); 
+
     routes
 }
 

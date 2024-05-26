@@ -150,9 +150,6 @@ impl Response {
         self.headers.push(header);
         return self;
     }
-
-
-
     
 
 }

@@ -111,4 +111,15 @@ impl Request {
         self
     }
 
+    pub fn read_header(&self, key: &str) -> Option<String> {
+        for header in &self.headers {
+            let parts: Vec<&str> = header.split(":").collect();
+            if parts[0].trim() == key {
+                return Some(parts[1].trim().to_string());
+            }
+        }
+        None
+    }
+
+
 }
