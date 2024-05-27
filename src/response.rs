@@ -2,7 +2,7 @@ use std::fmt;
 use std::io::prelude::*;
 
 #[allow(dead_code)]
-pub enum HTTPResponseStatus{
+pub enum HTTPResponseStatus {
     OK = 200,
     CREATED = 201,
     ACCEPTED = 202,
@@ -66,17 +66,29 @@ impl fmt::Display for HTTPResponseStatus {
     }
 }
 
+pub enum Body {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
 pub struct Response {
     pub status: String,
-    pub body: String,
+    pub body: Body,
     pub headers: Vec<String>,
     pub stream: std::net::TcpStream,
-
 }
 
 impl fmt::Display for Response {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Response: status: {}, body: {}", self.status, self.body)
+        write!(
+            f,
+            "Response: status: {}, body: {}",
+            self.status,
+            match &self.body {
+                Body::Text(body) => body,
+                Body::Binary(_) => "Binary data",
+            }
+        )
     }
 }
 
@@ -84,22 +96,65 @@ impl Response {
     pub fn new(stream: &mut std::net::TcpStream) -> Response {
         Response {
             headers: Vec::new(),
-            body: String::new(),
+            body: Body::Text("".to_string()),
             status: "200 OK".to_string(),
             stream: stream.try_clone().unwrap(),
         }
     }
 
     pub fn send(&mut self) {
-       let response = format!("HTTP/1.1 {}\r\n{}\r\n\r\n{}", self.status, self.headers.join("\r\n"), self.body);
+        let response = format!(
+            "HTTP/1.1 {}\r\n{}\r\n\r\n{}",
+            self.status,
+            self.headers.join("\r\n"),
+            match &self.body {
+                Body::Text(body) => body.clone(),
+                Body::Binary(data) => {
+                    let body: String = data.iter().map(|&byte| byte as char).collect();
+                    body
+                }
+            }
+        );
         self.stream.write(response.as_bytes()).unwrap();
         self.stream.flush().unwrap();
     }
 
-    pub fn get_status_line(
-        status: HTTPResponseStatus,
-    ) -> String {
-       match status {
+    pub fn send_binary(&mut self) {
+        // let headers_bytes: Vec<u8> = self.headers.join("\r\n").into_bytes();
+        // let response = format!(
+        //     "HTTP/1.1 {}\r\n{}\r\n\r\n{}",
+        //     self.status,
+        //     String::from_utf8_lossy(&headers_bytes), // Convert headers bytes back to string
+        //     match &self.body {
+        //         Body::Text(body) => body.clone(),
+        //         Body::Binary(data) => {
+        //             let body: String = data.iter().map(|&byte| byte as char).collect();
+        //             body
+        //         }
+        //     }
+        // );
+        // self.stream.write(response.as_bytes()).unwrap();
+        // self.stream.flush().unwrap();
+
+        let mut response = [
+            self.status.clone(),
+            self.headers.join("\r\n"),
+            "\r\n\r\n".to_string(),
+        ]
+        .join("\r\n")
+        .into_bytes();
+        response.extend(match &self.body {
+            Body::Text(body) => body.clone().into_bytes(),
+            Body::Binary(data) => data.clone(),
+        });
+        self.stream.write("HTTP/1.1 ".as_bytes()).unwrap();
+
+        self.stream.write(&response).unwrap();
+        self.stream.flush().unwrap();
+    }
+
+    pub fn get_status_line(status: HTTPResponseStatus) -> String {
+        match status {
             HTTPResponseStatus::OK => "200 OK".to_string(),
             HTTPResponseStatus::CREATED => "201 Created".to_string(),
             HTTPResponseStatus::ACCEPTED => "202 Accepted".to_string(),
@@ -127,31 +182,24 @@ impl Response {
             HTTPResponseStatus::INTERNALSERVERERROR => "500 Internal Server Error".to_string(),
             HTTPResponseStatus::NOTIMPLEMENTED => "501 Not Implemented".to_string(),
             HTTPResponseStatus::BADGATEWAY => "502 Bad Gateway".to_string(),
-            
-
-
-       }
+        }
     }
 
     #[allow(dead_code)]
-    pub fn set_status(&mut self, status: HTTPResponseStatus)  -> &mut Self {
+    pub fn set_status(&mut self, status: HTTPResponseStatus) -> &mut Self {
         self.status = Response::get_status_line(status);
         return self;
     }
 
     #[allow(dead_code)]
-    pub fn set_body(&mut self, body: String)  -> &mut Self {
+    pub fn set_body(&mut self, body: Body) -> &mut Self {
         self.body = body;
         return self;
     }
 
     #[allow(dead_code)]
-    pub fn add_header(&mut self, header: String)  -> &mut Self {
+    pub fn add_header(&mut self, header: String) -> &mut Self {
         self.headers.push(header);
         return self;
     }
-    
-
 }
-
-

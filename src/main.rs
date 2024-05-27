@@ -1,21 +1,21 @@
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::fs;
-use std::path::Path;
 use std::io::prelude::*;
 use std::net::TcpListener;
+use std::path::Path;
 
 use urlencoding;
 
-
-
-mod routes;
+mod encoding;
 mod request;
 mod response;
-mod encoding;
+mod routes;
 
-use routes::Routes;
-use request::{Request, ENCODINGS};
 use encoding::Encoding;
-use response::{Response, HTTPResponseStatus};
+use request::{Request, ENCODINGS};
+use response::{Body, HTTPResponseStatus, Response};
+use routes::Routes;
 
 fn main() {
     println!("Started Server on http://127.0.0.1:4221");
@@ -39,7 +39,7 @@ fn setup_routes() -> Routes {
 
     routes.get("/", |_, response| {
         response.status = HTTPResponseStatus::OK.to_string();
-        response.body = "<h1>Hello, World!</h1>".to_string();
+        response.body = Body::Text("<h1>Hello, World!</h1>".to_string());
         response.headers.push("Content-Type: text/html".to_string());
         response.send();
     });
@@ -52,55 +52,105 @@ fn setup_routes() -> Routes {
     // });
 
     routes.get("/echo/:name", |request, response| {
+        fn send500(response: &mut Response) {
+            response.status = HTTPResponseStatus::INTERNALSERVERERROR.to_string();
+            response.body = Body::Text("500 Internal Server Error".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
+            response.headers.push("Content-Length: 21".to_string());
+            response.send();
+        }
 
-        let content_encoding = request.read_header("Accept-Encoding").unwrap_or("".to_string());
+        let content_encoding = request
+            .read_header("Accept-Encoding")
+            .unwrap_or("".to_string());
         let content_encoding: Vec<&str> = content_encoding.split(",").collect();
+
+        let name = match request.params.get("name") {
+            Some(n) => n,
+            None => {
+                send500(response);
+                return;
+            }
+        };
 
         let mut encodings: Vec<String> = Vec::new();
         for encoding in content_encoding.iter() {
             let encoding = encoding.trim();
             if ENCODINGS::BASE64.to_string().to_lowercase() == *encoding {
-                    encodings.push(ENCODINGS::BASE64.to_string());
+                encodings.push(ENCODINGS::BASE64.to_string());
             } else if ENCODINGS::GZIP.to_string().to_lowercase() == *encoding {
                 encodings.push(ENCODINGS::GZIP.to_string());
             } else if ENCODINGS::DEFLATE.to_string().to_lowercase() == *encoding {
                 encodings.push(ENCODINGS::DEFLATE.to_string());
-            } 
-                    
-            
-        };
-
-        // return;
-        response.status = HTTPResponseStatus::OK.to_string();
-        response.body = format!("{}", request.params.get("name").unwrap());
-        response.headers.push("Content-Type: text/plain".to_string());
-        response.headers.push("Content-Length: ".to_owned()+ &request.params.get("name").unwrap().len().to_string());
-        if encodings.len() > 0 {
-            response.headers.push("Content-Encoding: ".to_owned() + &encodings.join(","));
+            }
         }
-        response.send();
+
+        if encodings.contains(&ENCODINGS::GZIP.to_string()) {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            match encoder.write_all(name.as_bytes()) {
+                Ok(_) => match encoder.finish() {
+                    Ok(compressed_bytes) => {
+                        let compressed_bytes_clone = compressed_bytes.clone(); // Clone here
+                        response.body = Body::Binary(compressed_bytes);
+                        response.headers.push("Content-Encoding: gzip".to_string());
+                        response
+                            .headers
+                            .push(format!("Content-Length: {}", compressed_bytes_clone.len()));
+                        response.status = HTTPResponseStatus::OK.to_string();
+                        response
+                            .headers
+                            .push("Content-Type: text/plain".to_string());
+                        response.send_binary();
+                    }
+                    Err(_) => {
+                        send500(response);
+                        return;
+                    }
+                },
+                Err(_) => {
+                    send500(response);
+                    return;
+                }
+            }
+        } else {
+            response.body = Body::Text(name.clone());
+            response
+                .headers
+                .push(format!("Content-Length: {}", name.len()));
+            response.status = HTTPResponseStatus::OK.to_string();
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
+            response.send();
+        }
     });
 
-    routes.get("/user-agent", |request,response| {
+    routes.get("/user-agent", |request, response| {
         let user_agent = request.read_header("User-Agent").unwrap();
 
         response.status = HTTPResponseStatus::OK.to_string();
-        response.body = format!("{}", user_agent);
-        response.headers.push("Content-Type: text/plain".to_string());
-        response.headers.push("Content-Length: ".to_owned()+ &user_agent.len().to_string());
+        response.body = Body::Text(user_agent.clone());
+        response
+            .headers
+            .push("Content-Type: text/plain".to_string());
+        response
+            .headers
+            .push("Content-Length: ".to_owned() + &user_agent.len().to_string());
         response.send();
-    }); 
+    });
 
-    routes.get("/files/:filename", |request,response|{
-
+    routes.get("/files/:filename", |request, response| {
         fn send500(response: &mut Response) {
             response.status = HTTPResponseStatus::INTERNALSERVERERROR.to_string();
-            response.body = "500 Internal Server Error".to_string();
-            response.headers.push("Content-Type: text/plain".to_string());
+            response.body = Body::Text("500 Internal Server Error".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
             response.headers.push("Content-Length: 21".to_string());
             response.send();
         }
-
 
         let filename = request.params.get("filename").unwrap();
         let env_args = std::env::args().collect::<Vec<String>>();
@@ -112,8 +162,10 @@ fn setup_routes() -> Routes {
 
         if !fs::metadata(&path).is_ok() {
             response.status = HTTPResponseStatus::NOTFOUND.to_string();
-            response.body = "404 Not Found".to_string();
-            response.headers.push("Content-Type: text/plain".to_string());
+            response.body = Body::Text("404 Not Found".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
             response.headers.push("Content-Length: 13".to_string());
             response.send();
             return;
@@ -121,8 +173,10 @@ fn setup_routes() -> Routes {
 
         if fs::metadata(&path).unwrap().is_dir() {
             response.status = HTTPResponseStatus::FORBIDDEN.to_string();
-            response.body = "403 Forbidden".to_string();
-            response.headers.push("Content-Type: text/plain".to_string());
+            response.body = Body::Text("403 Forbidden".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
             response.headers.push("Content-Length: 13".to_string());
             response.send();
             return;
@@ -135,24 +189,28 @@ fn setup_routes() -> Routes {
                 return;
             }
         };
-            
+
         response.status = HTTPResponseStatus::OK.to_string();
 
         let contents = contents.replace("\u{0}", "");
 
-        
-        response.body = contents.clone();
-        response.headers.push("Content-Type: application/octet-stream".to_string());
-        response.headers.push("Content-Length: ".to_owned()+ &contents.len().to_string());
+        response.body = Body::Text(contents.clone());
+        response
+            .headers
+            .push("Content-Type: application/octet-stream".to_string());
+        response
+            .headers
+            .push("Content-Length: ".to_owned() + &contents.len().to_string());
         response.send();
-
     });
 
     routes.post("/files/:filename", |request, response| {
         fn send500(response: &mut Response) {
             response.status = "500 Internal Server Error".to_string();
-            response.body = "500 Internal Server Error".to_string();
-            response.headers.push("Content-Type: text/plain".to_string());
+            response.body = Body::Text("500 Internal Server Error".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
             response.headers.push("Content-Length: 21".to_string());
             response.send();
         }
@@ -186,26 +244,34 @@ fn setup_routes() -> Routes {
 
         if !Path::new(&dir).exists() {
             response.status = "404 Not Found".to_string();
-            response.body = "404 Not Found".to_string();
-            response.headers.push("Content-Type: text/plain".to_string());
+            response.body = Body::Text("404 Not Found".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
             response.headers.push("Content-Length: 13".to_string());
             response.send();
             return;
         }
 
-        let body =  request.body.clone();
+        let body = request.body.clone();
         let body = body.replace("\u{0}", "");
 
-        let content_encoding = request.read_header("Accept-Encoding").unwrap_or("".to_string());
+        let content_encoding = request
+            .read_header("Accept-Encoding")
+            .unwrap_or("".to_string());
 
         match fs::write(&path, &body) {
             Ok(_) => {
                 println!("File written to {}", path);
                 response.status = "201 Created".to_string();
-                response.body = "201 Created".to_string();
-                response.headers.push("Content-Type: text/plain".to_string());
+                response.body = Body::Text("201 Created".to_string());
+                response
+                    .headers
+                    .push("Content-Type: text/plain".to_string());
                 response.headers.push("Content-Length: 11".to_string());
-                response.headers.push("Content-Encoding: ".to_owned() + &content_encoding);
+                response
+                    .headers
+                    .push("Content-Encoding: ".to_owned() + &content_encoding);
                 response.send();
             }
             Err(_) => {
@@ -213,21 +279,17 @@ fn setup_routes() -> Routes {
                 return;
             }
         }
-
-
     });
 
     routes
 }
 
 pub fn handle_connection(stream: &mut std::net::TcpStream) {
-
-    
     let mut buffer = [0; 512];
     stream.read(&mut buffer).unwrap();
     let request = Request::new(&String::from_utf8_lossy(&buffer[..]));
-    
-    let mut routes = setup_routes();   
+
+    let mut routes = setup_routes();
 
     match routes.resolve(request.get_method(), &request.path) {
         Some(resolved) => {
@@ -239,17 +301,13 @@ pub fn handle_connection(stream: &mut std::net::TcpStream) {
         None => {
             let mut response = Response::new(stream);
             response.status = HTTPResponseStatus::NOTFOUND.to_string();
-            response.body = "404 Not Found".to_string();
-            response.headers.push("Content-Type: text/plain".to_string());
+            response.body = Body::Text("404 Not Found".to_string());
+            response
+                .headers
+                .push("Content-Type: text/plain".to_string());
             response.headers.push("Content-Length: 13".to_string());
             response.send();
-            response.send(); 
+            response.send();
         }
     }
-
 }
-
-
-
-
-
