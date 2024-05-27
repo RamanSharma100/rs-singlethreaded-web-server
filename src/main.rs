@@ -13,7 +13,7 @@ mod response;
 mod encoding;
 
 use routes::Routes;
-use request::Request;
+use request::{Request, ENCODINGS};
 use encoding::Encoding;
 use response::{Response, HTTPResponseStatus};
 
@@ -54,14 +54,29 @@ fn setup_routes() -> Routes {
     routes.get("/echo/:name", |request, response| {
 
         let content_encoding = request.read_header("Accept-Encoding").unwrap_or("".to_string());
-        let content_encoding = content_encoding.trim();
+        let content_encoding: Vec<&str> = content_encoding.split(",").collect();
 
+        let mut encodings: Vec<String> = Vec::new();
+        for encoding in content_encoding.iter() {
+            let encoding = encoding.trim();
+            if ENCODINGS::BASE64.to_string().to_lowercase() == *encoding {
+                    encodings.push(ENCODINGS::BASE64.to_string());
+            } else if ENCODINGS::GZIP.to_string().to_lowercase() == *encoding {
+                encodings.push(ENCODINGS::GZIP.to_string());
+            } else if ENCODINGS::DEFLATE.to_string().to_lowercase() == *encoding {
+                encodings.push(ENCODINGS::DEFLATE.to_string());
+            } 
+                    
+            
+        };
+
+        // return;
         response.status = HTTPResponseStatus::OK.to_string();
         response.body = format!("{}", request.params.get("name").unwrap());
         response.headers.push("Content-Type: text/plain".to_string());
         response.headers.push("Content-Length: ".to_owned()+ &request.params.get("name").unwrap().len().to_string());
-        if content_encoding != "invalid-encoding" {
-            response.headers.push("Content-Encoding: ".to_owned() + content_encoding);
+        if encodings.len() > 0 {
+            response.headers.push("Content-Encoding: ".to_owned() + &encodings.join(","));
         }
         response.send();
     });

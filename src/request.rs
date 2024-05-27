@@ -14,6 +14,29 @@ pub enum HTTPRequestMethod {
     UNKNOWN,
 }
 
+#[allow(dead_code)]
+pub enum ENCODINGS {
+    URL,
+    BASE64,
+    GZIP,
+    DEFLATE,
+    BR,
+    IDENTITY,
+}
+
+impl std::fmt::Display for ENCODINGS {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            ENCODINGS::URL => write!(f, "url"),
+            ENCODINGS::BASE64 => write!(f, "base64"),
+            ENCODINGS::GZIP => write!(f, "gzip"),
+            ENCODINGS::DEFLATE => write!(f, "deflate"),
+            ENCODINGS::BR => write!(f, "br"),
+            ENCODINGS::IDENTITY => write!(f, "identity"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Method {
     GET,
