@@ -28,8 +28,8 @@ pub enum Method {
     OTHER,
 }
 
-#[derive(Debug)]
 
+#[derive(Debug)]
 pub struct Request {
     pub method: Method,
     pub path: String,
@@ -42,7 +42,7 @@ pub struct Request {
 impl Request {
 
     pub fn new(request: &str) -> Request {
-        let mut headers = Vec::new();
+        let mut headers: Vec<String> = Vec::new();
         let mut body = String::new();
         let mut method = Method::OTHER;
         let _params: HashMap<String,String> = HashMap::new();
@@ -73,8 +73,8 @@ impl Request {
                 if line == "" {
                     is_body = true;
                 } else if is_body {
-                    body.push_str(line);
-                    body.push_str("\n");
+                    body = line.to_string();
+                    is_body = false;
                 } else {
                     headers.push(line.to_string());
                 }

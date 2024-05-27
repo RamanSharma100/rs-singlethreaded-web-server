@@ -31,6 +31,20 @@ impl Routes {
         }
     }
 
+    pub fn post<F>(&mut self, path: &str, handler: F)
+    where
+        F: FnMut(Request, &mut Response) + Send + 'static
+    {
+        if path.contains(":") {
+            let route_handlers = self.parameterized_routes.entry(HTTPRequestMethod::POST).or_insert_with(Vec::new);
+            let parts = path.split("/").map(|part| part.to_string()).collect();
+            route_handlers.push((parts, Box::new(handler)));
+        } else {
+            let route_handlers = self.routes.entry(HTTPRequestMethod::POST).or_insert_with(HashMap::new);
+            route_handlers.insert(path.to_string(), Box::new(handler));
+        }
+    }
+
     pub fn resolve(&mut self, method: HTTPRequestMethod, path: &str) -> Option<(&mut Handler, HashMap<String, String>)> {
         if let Some(route_handlers) = self.routes.get_mut(&method) {
             if let Some(handler) = route_handlers.get_mut(path) {

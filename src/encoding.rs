@@ -43,6 +43,7 @@ impl Encoding {
         decoded
     }
 
+    #[allow(dead_code)]
     pub fn base64_encode(input: &str) -> String {
         base64::encode(input)
     }

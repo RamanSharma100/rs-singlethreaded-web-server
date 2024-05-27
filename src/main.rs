@@ -1,6 +1,11 @@
 use std::fs;
+use std::path::Path;
 use std::io::prelude::*;
 use std::net::TcpListener;
+
+use urlencoding;
+
+
 
 mod routes;
 mod request;
@@ -83,36 +88,6 @@ fn setup_routes() -> Routes {
         });
         let path = format!("{}/{}", dir, Encoding::precentage_decode(filename));
 
-        let binding = filename.split(".").collect::<Vec<&str>>();
-        let file_ext = binding.last().unwrap();
-
-        let content_type = match file_ext {
-            &"html" => "text/html",
-            &"css" => "text/css",
-            &"js" => "text/javascript",
-            &"png" => "image/png",
-            &"jpg" => "image/jpeg",
-            &"jpeg" => "image/jpeg",
-            &"gif" => "image/gif",
-            &"svg" => "image/svg+xml",
-            &"ico" => "image/x-icon",
-            &"json" => "application/json",
-            &"pdf" => "application/pdf",
-            _ => "application/octet-stream",
-        };
-
-        let isBinary = match file_ext {
-            &"png" => true,
-            &"jpg" => true,
-            &"jpeg" => true,
-            &"gif" => true,
-            &"svg" => true,
-            &"ico" => true,
-            &"pdf" => true,
-            _ => false,
-        };
-
-
         if !fs::metadata(&path).is_ok() {
             response.status = HTTPResponseStatus::NOTFOUND.to_string();
             response.body = "404 Not Found".to_string();
@@ -131,28 +106,89 @@ fn setup_routes() -> Routes {
             return;
         }
 
-
-        
-
-        let contents = match fs::read(&path) {
+        let contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
             Err(_) => {
                 send500(response);
                 return;
             }
         };
-
+            
         response.status = HTTPResponseStatus::OK.to_string();
-        response.body = if isBinary {
-            Encoding::base64_encode(
-                &String::from_utf8_lossy(&contents).to_string()
-            )
-        } else {
-            String::from_utf8_lossy(&contents).to_string()
-        };
-        response.headers.push("Content-Type: ".to_owned() + content_type);
-        response.headers.push("Content-Length: ".to_owned() + &contents.len().to_string());
+
+        let contents = contents.replace("\u{0}", "");
+
+        
+        response.body = contents.clone();
+        response.headers.push("Content-Type: application/octet-stream".to_string());
+        response.headers.push("Content-Length: ".to_owned()+ &contents.len().to_string());
         response.send();
+
+    });
+
+    routes.post("/files/:filename", |request, response| {
+        fn send500(response: &mut Response) {
+            response.status = "500 Internal Server Error".to_string();
+            response.body = "500 Internal Server Error".to_string();
+            response.headers.push("Content-Type: text/plain".to_string());
+            response.headers.push("Content-Length: 21".to_string());
+            response.send();
+        }
+
+        let filename = match request.params.get("filename") {
+            Some(f) => f,
+            None => {
+                send500(response);
+                return;
+            }
+        };
+
+        let env_args: Vec<String> = std::env::args().collect();
+        let dir = match env_args.get(2) {
+            Some(d) => d.clone(),
+            None => {
+                send500(response);
+                return;
+            }
+        };
+
+        let decoded_filename = match urlencoding::decode(filename) {
+            Ok(df) => df.to_string(),
+            Err(_) => {
+                send500(response);
+                return;
+            }
+        };
+
+        let path = format!("{}/{}", dir, decoded_filename);
+
+        if !Path::new(&dir).exists() {
+            response.status = "404 Not Found".to_string();
+            response.body = "404 Not Found".to_string();
+            response.headers.push("Content-Type: text/plain".to_string());
+            response.headers.push("Content-Length: 13".to_string());
+            response.send();
+            return;
+        }
+
+        let body =  request.body.clone();
+        let body = body.replace("\u{0}", "");
+
+        match fs::write(&path, &body) {
+            Ok(_) => {
+                println!("File written to {}", path);
+                response.status = "201 Created".to_string();
+                response.body = "201 Created".to_string();
+                response.headers.push("Content-Type: text/plain".to_string());
+                response.headers.push("Content-Length: 11".to_string());
+                response.send();
+            }
+            Err(_) => {
+                send500(response);
+                return;
+            }
+        }
+
 
     });
 
