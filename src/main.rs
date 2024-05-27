@@ -52,10 +52,17 @@ fn setup_routes() -> Routes {
     // });
 
     routes.get("/echo/:name", |request, response| {
+
+        let content_encoding = request.read_header("Accept-Encoding").unwrap_or("".to_string());
+        let content_encoding = content_encoding.trim();
+
         response.status = HTTPResponseStatus::OK.to_string();
         response.body = format!("{}", request.params.get("name").unwrap());
         response.headers.push("Content-Type: text/plain".to_string());
         response.headers.push("Content-Length: ".to_owned()+ &request.params.get("name").unwrap().len().to_string());
+        if content_encoding != "invalid-encoding" {
+            response.headers.push("Content-Encoding: ".to_owned() + content_encoding);
+        }
         response.send();
     });
 
@@ -174,6 +181,8 @@ fn setup_routes() -> Routes {
         let body =  request.body.clone();
         let body = body.replace("\u{0}", "");
 
+        let content_encoding = request.read_header("Accept-Encoding").unwrap_or("".to_string());
+
         match fs::write(&path, &body) {
             Ok(_) => {
                 println!("File written to {}", path);
@@ -181,6 +190,7 @@ fn setup_routes() -> Routes {
                 response.body = "201 Created".to_string();
                 response.headers.push("Content-Type: text/plain".to_string());
                 response.headers.push("Content-Length: 11".to_string());
+                response.headers.push("Content-Encoding: ".to_owned() + &content_encoding);
                 response.send();
             }
             Err(_) => {
